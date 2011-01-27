@@ -1,0 +1,262 @@
+#!/bin/bash
+
+# script to use gui / command-line to:
+# 1. start adb server (as admin)
+# 2. start emulators
+# 3. create app
+# 4. debug install
+# 5. release, jarsigner, zipalign
+
+
+
+
+##############
+# CONFIGURE: #
+##############
+PATHTOSDK=/home/jeremy/Dev/android/sdk
+PATHTOKEYSTORE=/home/jeremy/jdfandr.keystore
+KEYALIAS=jdfandr
+DEFAULTAPPPATH=/home/jeremy/Dev/android
+
+##########
+# USAGE: #
+##########
+# andtools [tool] [options]
+# 
+# andtools server
+# andtools emulator
+# andtools newapp [path] [name] [appid]
+# andtools debug [path]
+# andtools release [path] [name]
+
+if [ "$1" == "--help" ] ; then
+   echo "ANDTOOLS v1.0"
+   echo "by Jeremy Forsythe <jdfsoftware@gmail.com>"
+   echo "Jan 27, 2011"
+   echo ""
+   echo "Usage:"
+   echo "andtools [tool] [options]"
+   echo ""
+   echo "TOOLS:"
+   echo "andtools server"
+   echo "  -- stops/restarts adb server (necessary intermittently on Ubuntu)"
+   echo ""
+   echo "andtools emulator"
+   echo "  -- starts Android SDK and AVD Manager so you can choose an emulator"
+   echo ""
+   echo "andtools newapp [path] [name] [appid]"
+   echo "  -- creates a new app project"
+   echo "  -- you need to set up the build targets by editing this script"
+   echo "  -- [path] is the relative path to the new app directory"
+   echo "  -- [name] is the title of your app"
+   echo "  -- [appid] is the project namespace (e.g. com.company.appname)"
+   echo ""
+   echo "andtools debug [path]"
+   echo "  -- builds app with debug key, installs, and runs logcat"
+   echo "  -- [path] is the relative path to the app directory"
+   echo ""
+   echo "andtools release [path] [name]"
+   echo "  -- builds app with your release key (edit this script to point to it!)"
+   echo "     then zipaligns it"
+   echo "  -- [path] is the relative path to the app directory"
+   echo "  -- [name] is the name of your app (must exactly match the name the project was created with)"
+   exit 1
+fi
+
+echo $1
+
+# if nothing was entered as a tool or an unrecognized tool, find out what we want to do
+# if [ -z "$1" -o "$1" != "server" -o "$1" != "emulator" -o "$1" != "newapp" -o "$1" != "debug" -o "$1" != "release" ] ; then
+if [ -z "$1" ] && [ "$1" != "server" ] && [ "$1" != "emulator" ] && [ "$1" != "newapp" ] && [ "$1" != "debug" ] && [ "$1" != "release" ] ; then
+
+   tool=$(zenity --list --checklist --height=300 \
+      --title='Which tools to run?' --column=Run --column=Tools \
+      FALSE "Restart ADB Server" \
+      FALSE "Emulator" \
+      FALSE "New app" \
+      TRUE "Debug install" \
+      FALSE "RELEASE" --separator=':')
+
+   if [ -z "$tool" ] ; then
+      echo "No selection. Exiting..."
+      exit 1
+   fi
+
+   IFS=":"
+   for word in $tool ; do 
+      case $word in
+         "Restart ADB Server") tool="server" ;;
+         "Emulator") tool="emulator" ;;
+         "New app") tool="newapp" ;;
+         "Debug install") tool="debug" ;;
+         "RELEASE") tool="release";;
+      esac
+   done
+   unset IFS
+
+
+else
+
+   tool=$1
+
+   if [ ! -z "$2" ] && [ -d "$PWD/$2" ] ; then
+      path="$PWD/$2"
+   fi
+
+   if [ ! -z "$3" ] ; then
+      appname=$3
+   fi
+   
+   if [ ! -z "$4" ] ; then
+      packageid=$4
+   fi
+
+fi
+
+# perform tool actions
+case $tool in
+   "server")
+      echo "Restarting ADB Server"
+      sudo $PATHTOSDK/platform-tools/adb kill-server
+      sudo $PATHTOSDK/platform-tools/adb start-server
+      $PATHTOSDK/platform-tools/adb devices
+      echo "Server Restarted. Press Enter..."
+      read enter         
+   ;;
+   # end restart ADB server
+      
+      
+         
+   "emulator")
+      echo "Starting Emulator"
+      $PATHTOSDK/tools/android >/dev/null &
+      echo "Emulator running. Press Enter..."
+      read enter         
+    ;;
+    # end emulator
+    
+    
+    
+    
+   "newapp")
+      echo "Creating New app"
+      folder=${path=$(zenity --file-selection --filename=$DEFAULTAPPPATH/ --directory --title="Select directory for new app")}
+      
+      if [ -z "$folder" ] ; then
+         echo "No selection"
+         exit 1
+      fi
+      
+      if [ ! -d "$folder" ] ; then
+         echo "$folder is not a directory."
+         exit 1
+      fi
+      
+      
+      
+      ###########
+      # CONFIG: #
+      ###########
+      #
+      # You need to set up your build targets here
+      # just run:
+      #   android list targets
+      # and get the id: # for the different Android platforms you have installed
+      # in my example below, I have Google APIs and Android Platforms, so my
+      # Android platforms are ids 1, 3, and 5 for APIs 7, 8, and 9 (OS versions
+      # 2.1-update1, 2.2, and 2.3)
+      # You can make the text say whatever you want, but it MUST match exactly the
+      # strings below in the case statement
+      #
+      # if you only have one target, you can comment out everything from targetsel= to unset IFS
+      # and just put:
+      #
+      # target=1
+      #
+      # for a build target of 1
+      
+      
+      
+      targetsel=$(zenity  --list --radiolist  --text "Which SDK to target?" --column "Which" --column "SDK (OS)" \
+         TRUE "7 (2.1-update1)" \
+         FALSE "8 (2.2)" \
+         FALSE "9 (2.3)" \
+         --separator=":");
+         
+      IFS=":"
+      for sdk in $targetsel ; do
+         case $sdk in
+            "7 (2.1-update1)") target=1 ;;
+            "8 (2.2)") target=3 ;;
+            "9 (2.3)") target=5 ;;
+         esac
+      done
+      unset IFS
+      
+      name=${appname=$(zenity --entry --text "App Name" --entry-text "App")}
+      
+      if [ -z "$name" ] ; then
+         echo "Can't have empty app name"
+         exit 1
+      fi
+      
+      appid=${packageid=$(zenity --entry --text "App ID (package name)" --entry-text "com.jdfsoftware.")}
+
+      if [ -z "$appid" ] ; then
+         echo "Can't have empty app id / package name"
+         exit 1
+      fi
+      
+      $PATHTOSDK/tools/android create project --target $target --name "$name" --path "$folder" --activity "$name" --package $appid
+      
+      echo "Created app in $folder"        
+      
+   ;;
+   # end new app
+   
+   
+   
+      
+   "debug")
+   
+      debugfolder=${path=$(zenity --file-selection --filename=$DEFAULTAPPPATH/ --directory --title="Select app directory")}
+      if [ ! -d "$debugfolder" ] ; then
+         echo "$debugfolder is not a directory. This shouldn't happen!"
+         exit 1
+      fi
+      
+      cd $debugfolder
+      ant debug install
+      echo "Build done. Press enter for logcat..."
+      read enter
+      
+      cd $PATHTOSDK
+      ./platform-tools/adb logcat
+      
+   ;;
+   # end debug install
+   
+   "release")
+   
+      rlsfolder=${path=$(zenity --file-selection --filename=$DEFAULTAPPPATH/ --directory --title="Select app directory")}
+      
+      if [ ! -d "$rlsfolder" ] ; then
+         echo "$rlsfolder is not a directory. This shouldn't happen!"
+         exit 1
+      fi
+      
+      cd $rlsfolder
+      ant release
+      cd bin
+      
+      if [ -z "$appname" ] ; then
+         unsigned=$(zenity --file-selection --filename=$rlsfolder/bin/ --title="Select unsigned APK")
+      else
+         unsigned="$appname-unsigned.apk"
+      fi
+      jarsigner --verbose --keystore "$PATHTOKEYSTORE" $unsigned $KEYALIAS
+      unaligned=${unsigned%\-unsigned\.*}
+      zipalign -v 4 "$unsigned" "$unaligned.apk"
+   ;;
+   # end release
+esac
