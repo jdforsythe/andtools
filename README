@@ -1,0 +1,6 @@
+ANDTOOLS (android tools)
+
+andtools --help for syntax
+
+Edit the script and change the two CONFIG areas to match your system
+(you'll need to add the path to your sdk, your default app directory, which build targets you have installed, etc.)
